@@ -14,9 +14,9 @@ Layer 01, networking — in progress. OPNsense is migrated onto the R630 and the
 
 ## Network
 
-![Home network topology](diagrams/homelab_map_preview.png)
+![Home network topology](diagrams/homelab.map.preview.png)
 
-The Dell R630 is the network edge: the ISP feed lands on its WAN NIC, and an OPNsense VM running on that host routes and firewalls everything behind it. The network is a single flat subnet today — segmentation is planned inside this layer, so this diagram gets replaced as the topology changes. Source file: `diagrams/homelab_map.drawio`.
+The Dell R630 is the network edge: the ISP feed lands on its WAN NIC, and an OPNsense VM running on that host routes and firewalls everything behind it. The network is a single flat subnet today — segmentation is planned inside this layer, so this diagram gets replaced as the topology changes. Source file: `diagrams/homelab.map.drawio`.
 
 ## Layers
 
@@ -42,8 +42,8 @@ Once layer 10 closes, the list repeats from the top, one notch deeper.
     ├── writeups/
     │   └── 01-networking.md
     ├── diagrams/
-    │   ├── homelab_map.drawio
-    │   └── homelab_map_preview.png
+    │   ├── homelab.map.drawio
+    │   └── homelab.map.preview.png
     └── network/            sanitised configs and notes for layer 01
 
 Later layers add their own write-up and folder as they open.
