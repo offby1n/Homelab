@@ -82,7 +82,3 @@ Every device on the LAN now routes through the OPNsense VM, and the firewall sur
 
 ---
 
-## 2. <next entry title>
-
-<!-- Same shape every time: Why / What I did / What cost me time / Result / Known constraints.
-     Append below, never rewrite entries above. Update Current topology and Open items in place. -->
