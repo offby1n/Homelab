@@ -76,9 +76,47 @@ Every device on the LAN now routes through the OPNsense VM, and the firewall sur
 
 ### Known constraints
 
-- The R630 is the edge. There is nothing upstream filtering anything, so the WAN ruleset is the only thing between the internet and the LAN. Default deny inbound and the block log are load-bearing, not decoration.
 - The host depends on a guest for its route off the LAN. Out-of-band access via iDRAC is the recovery path, and it needs to stay reachable and tested.
 - No segmentation yet. A compromised wireless client sits in the same broadcast domain as iDRAC and the Proxmox host. VLANs are the fix, and they are the next thing in this layer.
 
 ---
+## 2. WireGuard road-warrior access over a dynamic IP
 
+September 2026
+
+### Why
+
+The whole lab lives in Greece and needs to stay reachable after I move. That
+means remote access to the LAN from a phone or laptop on any network, without
+exposing anything else. The ISP hands out a dynamic public IP, so the hostname
+clients dial has to track it automatically.
+
+### What I did
+
+- Registered a domain and set up DDNS on OPNsense (os-ddclient, Cloudflare
+  provider, API token scoped to DNS edit) so a hostname always tracks the
+  changing public IP. The vpn record is grey-cloud (DNS-only) — Cloudflare's
+  proxy only passes HTTP/HTTPS and would drop WireGuard's UDP.
+- Configured a WireGuard instance (10.10.10.1/24, listen UDP 51820), assigned
+  it as an interface, and added one firewall rule: WireGuard net → LAN net,
+  everything else denied.
+- Forwarded UDP 51820 inward to the firewall and confirmed the full inbound
+  path.
+- Generated per-device peers (phone 10.10.10.2/32, laptop 10.10.10.3/32),
+  split-tunnel (AllowedIPs = 192.168.10.0/24) so only LAN traffic uses the
+  tunnel. Laptop runs as a systemd service (wg-quick@homelan) so it's always up.
+
+### What cost me time
+
+The tunnel wouldn't handshake — client sending, server receiving nothing
+(rx: 0). A TCP port checker reported 51820 "closed", which looked like the port
+never opening; a proper UDP scan returned "open|filtered", not closed, which
+pointed back at my own config. The real cause: I'd regenerated the peer more
+than once, so the client held one keypair while OPNsense stored another.
+WireGuard rejects a peer whose public key doesn't match.
+
+### Result
+
+Deleting the stale peer, generating exactly one clean peer, and importing it
+fresh fixed it — handshake immediate, rx/tx both climbing. Phone and laptop
+now reach the LAN from cellular; the laptop tunnel survives reboot.
