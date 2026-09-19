@@ -1,140 +1,95 @@
-# Hosting subnetlab.dev — a public tool on AWS from scratch
+# Layer 01 — Networking & Core Routing
 
-A standalone project write-up. Not part of the numbered layer track — this was
-a self-contained "stand something up on the public internet and do the hosting
-properly" exercise.
+The structural network baseline everything else in the lab builds upon: edge routing, stateful firewalling, CIDR addressing, and encrypted remote access. The physical Dell R630 hypervisor hosts the core gateway environment—running OPNsense as a top-priority virtual machine that processes all local area network (LAN) traffic. Upstream, the ISP perimeter router (a CosmOTE Speedport) sits between the server and the public internet fabric.
 
-Live at: https://subnetlab.dev
+**Status:** In Progress (Active Focus)
 
-## What it is
+## Operational Scope
 
-A public IPv4 subnet / CIDR calculator. You enter an address in CIDR notation
-and it breaks down the network, broadcast, usable host range, masks, and
-binary. It also does VLSM subnet splitting and an "is this IP in this subnet"
-check. Everything runs client-side in the browser — no backend, no data leaves
-the page.
+This foundational infrastructure layer is considered closed when I can execute each of the following tasks on my local lab environment without documentation open, and explain the underlying engineering concepts in plain English:
 
-The calculator front end (the single-file HTML/CSS/JS) was AI-generated. That
-was deliberate: the app was never the point. I wanted a real, non-trivial
-static site to host so that the hosting itself was the project — the server,
-the network path, DNS, TLS, and locking the whole thing down. That part I did
-by hand, and that's what this write-up is about.
+- **Subnetting Mechanics:** Manual binary calculation of CIDR blocks, network masks, network/broadcast boundaries, usable host pools, and VLSM splitting of a /24 allocation.
+- **Stateful DHCP & Local DNS:** Stateful DHCP space management with static IP reservations and recursive vs. authoritative local DNS resolution.
+- **Network Address Translation:** Configuring incoming port forwards and understanding Layer 3 outbound NAT mechanics.
+- **VLAN Segmentation:** Constructing 802.1Q tagged interfaces and enforcing strict inter-VLAN firewall rulesets.
+- **Stateful Packet Inspection:** Default-deny firewall logic, state tracking, and analyzing real-time block logs.
+- **Secure Remote Access:** Engineering a resilient WireGuard road-warrior tunnel topology.
+- **TCP/IP Fundamentals:** Analyzing the 3-way handshake, TCP vs. UDP performance profiles, ARP binding, TCP resets (RST), and handling MTU boundaries.
+- **Network Observability:** Mastering CLI network diagnostics using `ip`, `ss`, `dig`, `nmap`, `iperf3`, `tcpdump`, and parsing packet captures (`pcap`) inside Wireshark.
+- **Topological Documentation:** Committing a live, verifiable network diagram to this repository.
 
-## The stack I built
+## Current Network Topology
 
-The full chain, from bare instance to a locked-down public site:
+```text
+ISP Gateway (Dynamic Public IPv4, No CGNAT)
+└── CosmOTE Speedport (Edge Router, 192.168.1.1 — Holds Public IP)
+    └── Dell PowerEdge R630 (Proxmox VE Host, WAN Interface Fixed at 192.168.1.11 via Speedport DHCP Reservation)
+        └── OPNsense VM (Core Firewall Engine)
+            ├── WAN (vtnet0) → 192.168.1.11 (Double-NAT Boundary)
+            └── LAN (vtnet1) → 10.10.10.1/24 (DHCP Scope: .100–.200 via Unbound/DHCP Core)
+                └── Layer 2 Core Switch
+                    ├── Wireless Access Point (WAP Clients — DHCP Segment)
+                    ├── iDRAC Management Interface (10.10.10.x Static Out-of-Band Node)
+                    └── Proxmox VE Hypervisor (10.10.10.10/24 Static Interface on vmbr0)
+```
 
-- AWS EC2 (t3.micro, Amazon Linux 2023, eu-north-1) running nginx as a static
-  file server
-- A dedicated admin user with key-only login and password-required sudo,
-  keeping the default cloud user as a tested break-glass fallback
-- An Elastic IP so the address survives stop/start
-- nginx enabled as a systemd service so it comes back on every boot
-- A security group acting as the firewall: SSH restricted to my own IP,
-  HTTP/HTTPS open only where they needed to be
-- DNS on Cloudflare, domain registered there too
-- TLS via Let's Encrypt (certbot), with auto-renewal armed and dry-run tested
-- Cloudflare put in front as a reverse proxy (DDoS protection, CDN, origin IP
-  hidden)
-- The EC2 firewall then locked so ports 80/443 accept traffic only from
-  Cloudflare's IP ranges — the origin can't be hit directly anymore
+### Physical Handoff (R630 Interface Bindings)
+*   **nic0:** Dedicated WAN link to the CosmOTE Speedport LAN handoff.
+*   **nic2:** Shared LAN and host management infrastructure interface (`vmbr0`).
+*   **nic1:** Completely isolated local laboratory segment (`vmbr9`).
+*   **nic3:** Unallocated hot-spare interface.
 
-## What actually challenged me
+*Architectural Note:* Current addressing relies on a single, flat `10.10.10.0/24` broadcast domain. All endpoints, hypervisors, management platforms, and wireless devices temporarily share the same security posture. This is a deliberate, transitional phase. Hardened 802.1Q VLAN segmentation is the current development sprint and will replace this section upon completion.
 
-The app was handed to me finished. Every real problem was in the hosting,
-which is exactly what I wanted.
+## Active Engineering Backlog
+- [ ] Implement isolated VLAN trunks (Management, Trusted LAN, Untrusted Wireless, Lab Sandbox).
+- [ ] Enforce zero-trust default-deny rules between VLAN interfaces.
+- [ ] Compile comprehensive documentation for stateful firewall policies.
 
-SSH key permissions. First connection was refused outright — the private key
-file was world-readable (0644) and OpenSSH won't touch a key other users can
-read. `chmod 600` and it worked. Small, but a clean reminder that the client
-side of key auth has rules too.
+---
 
-certbot failing on a "firewall problem." certbot's challenge timed out trying
-to reach the box over port 80. The error said "likely firewall problem" and it
-was right — I'd never actually opened HTTP/HTTPS in the security group. The
-launch defaults only had SSH. Added the rules, confirmed port 80 answered from
-outside, and the challenge passed.
+## 1. Migrating OPNsense Core Router to Virtualized Infrastructure
 
-certbot got the cert but couldn't install it. Second run issued the
-certificate fine but failed to wire it into nginx: "could not find a matching
-server block." The default nginx config used a catch-all `server_name _;`
-instead of naming the domain, so certbot had nowhere to attach the cert. Set
-`server_name subnetlab.dev www.subnetlab.dev`, reloaded, ran `certbot install`,
-done.
+**Date:** September 2026
 
-The dynamic-IP SSH lockout. My home connection doesn't have a static IP, and
-the security group's SSH rule was pinned to one address. When my IP rotated,
-port 22 started timing out while the website (443) kept serving fine. That
-split — site up, SSH dead — is what pointed straight at the firewall rather
-than the box. Re-pinning the rule fixes it each time — a manual annoyance
-rather than a solved problem. I considered SSM to remove the public SSH port
-entirely but chose to keep hardened key-only SSH for now.
+### Architectural Motivation
+The edge firewall was previously running on a legacy bare-metal laptop. Deploying consumer hardware at the network perimeter introduced single points of failure across the entire domestic topology. The system lacked hardware redundancy, storage snapshots, automated failover capabilities, or out-of-band serial consoles for rapid recovery. Migrating OPNsense to a high-availability virtual machine on the enterprise Dell R630 leverages severe server-grade advantages: reliable power paths, iDRAC out-of-band outlays, atomic ZFS boot snapshots, and explicit hypervisor boot prioritizations.
 
-Locking the origin to Cloudflare — and locking myself out doing it. The goal
-was to only allow Cloudflare to reach the origin. My first attempt was wrong: I
-deleted the HTTP/HTTPS rules instead of scoping them, so nothing could reach
-the box — Cloudflare included — and the site went down behind a Cloudflare
-error page. That was the useful lesson: in a security group, no rule means no
-access; there's no implicit allow. The correct approach was a Managed Prefix
-List holding Cloudflare's 15 IPv4 ranges, then pointing the 80/443 rules at
-that list. I added the scoped rules first, confirmed the site still loaded, and
-only then removed the open ones — add-then-remove, never the reverse.
+### Execution Logs
+1.  **Backup & Export:** Extracted a master cryptographic `config.xml` profile from the legacy bare-metal edge laptop.
+2.  **VM Provisioning:** Built VM ID `102` on Proxmox VE utilizing two high-performance `virtio-net` network interfaces mapped to independent hardware bridges (`vtnet0` for WAN, `vtnet1` for LAN).
+3.  **Bootstrap & Restore:** Deployed a fresh installation of OPNsense from the official ISO image onto a native UFS file structure. Imported the `config.xml` backup and remapped the target interface abstractions to the newly instantiated `virtio` naming conventions.
+4.  **Edge Integration:** Connected the R630's assigned WAN NIC directly into the LAN side of the CosmOTE Speedport. Configured the OPNsense WAN interface to pull `192.168.1.11` via an upstream DHCP reservation. The resulting double-NAT environment is an accepted engineering tradeoff for this project phase to bypass putting the ISP residential gateway into fragile bridge states.
+5.  **Perimeter Availability:** Enforced strict hypervisor policies: modified VM boot ordering to position `102` first on host initialization to guarantee internet availability before dependent guest workloads boot. Enabled automated kernel panic restart tracking.
+6.  **State Capture:** Committed an atomic Proxmox snapshot post-verification to establish a permanent rollback recovery baseline.
 
-## How I proved the lockdown worked
+### Root-Cause Diagnostics (Time Reductions)
+*   **Installer Environment Trap:** The FreeBSD-based installer payload requires explicit console execution via the `installer` daemon context. Authenticating as generic `root` drops the shell into a standard live volatile memory landscape without triggering partition routines, resulting in silent installation loops on reboot.
+*   **ISO Boot Priority:** Failure to unmount or detach the loopback virtual optical media device prior to initial host reboots causes the system firmware to cycle directly back into the installation media sequence, rather than falling back to the local storage target blocks.
 
-The clean test is two commands that must give opposite results:
+### Engineering Outcomes & System Constraints
+The local environment routes cleanly through the virtualized OPNsense platform. The edge gateway effortlessly survives host power cycles without human intervention. The hypervisor now sits on the LAN behind a stateful environment it is actively computing. 
+*   **Recovery Vectors:** Because the hypervisor depends on a guest machine for external routing, the local out-of-band iDRAC configuration must remain accessible on a hardened static configuration as the primary emergency fallback.
+*   **NAT Layers:** Upstream port forwards must be synchronously mirrored on both the CosmOTE Speedport and the local OPNsense gateway to maintain public reachability.
+*   **Lack of Micro-segmentation:** Until the VLAN roadmap item is resolved, a compromise on a wireless device grants immediate local discovery vectors to internal hypervisor management layers.
 
-    # through Cloudflare — should work
-    curl -I https://subnetlab.dev
+---
 
-    # direct to the origin IP, bypassing Cloudflare — should now time out
-    curl -I --connect-timeout 10 https://<elastic-ip> -k
+## 2. Engineering Secure WireGuard Remote Access via Dynamic DNS
 
-The first returns 200. The second hangs. Site up for real users, origin sealed
-to everyone but Cloudflare. Confirming the direct path is dead mattered as much
-as confirming the proxied path is alive — a lockdown you didn't test isn't a
-lockdown.
+**Date:** September 2026
 
-## One number
+### Architectural Motivation
+The infrastructure workspace requires reliable, low-latency, encrypted access from remote clients without exposing standard management planes to the public internet. Because the residential ISP path utilizes a dynamic public IPv4 allocation without Carrier-Grade NAT (CGNAT), a mechanism was required to dynamically track edge routing changes and map client configurations cleanly.
 
-The Let's Encrypt certificate is valid for 90 days, and auto-renewal is armed
-and dry-run tested — so the TLS side is genuinely set-and-forget, not a thing
-I'll have to remember in December.
+### Execution Logs
+1.  **DDNS Synchronization:** Provisioned a custom domain and configured `os-ddclient` on OPNsense using a scoped Cloudflare API token constrained strictly to zone DNS edits. Established a non-proxied (grey-cloud) `vpn` record to ensure native UDP traffic passes cleanly without getting intercepted or terminated by Cloudflare's Layer 7 reverse proxy engines.
+2.  **Tunnel Configuration:** Provisioned a virtual WireGuard interface engine (`100.100.100.1/24`, binding to UDP port `51820`). Configured strict firewall interface rules: allowing traffic originating from the `WireGuard` network block to talk explicitly to specified `LAN` resources, enforcing a hard block on everything else.
+3.  **NAT Traversal Routing:** Engineered a synchronous nested port-forward mapping: forwarding public traffic on UDP port `51820` from the CosmOTE Speedport down to the OPNsense WAN interface (`192.168.1.11`), which then transparently passes packets directly into the internal WireGuard listening daemon.
+4.  **Endpoint Provisioning:** Generated independent asymmetric keypair peers (Mobile Endpoint: `100.100.100.2/32`, Remote Workstation: `100.100.100.3/32`). Enforced highly specific split-tunnel parameters (`AllowedIPs = 10.10.10.0/24`) to guarantee non-lab web traffic bypasses the tunnel. Configured the workstation tunnel sequence as a persistent native `systemd` unit (`wg-quick@homelan`) to survive client-side restarts.
 
-## What I'd do differently
+### Root-Cause Diagnostics (Time Reductions)
 
-Scope the firewall to Cloudflare from the start with a prefix list, instead of
-opening everything to the world and closing it later. The open-then-close path
-is how I locked myself out twice. Building the allow-list first would have been
-fewer steps and zero downtime.
-
-## Hardening the box
-
-Done as a follow-up session once the site was live. Every change was tested
-before it was trusted — on a live public box you prove a lockdown works, you
-don't assume it.
-
-- SSH, root login off. The box was already key-only with password auth
-  disabled; I turned off root SSH entirely (PermitRootLogin no). root is the
-  one username every bot tries first, so removing it from the login surface
-  costs nothing — I log in as my own user and sudo — and deletes the
-  highest-value target.
-
-- fail2ban. Watches SSH auth events in the systemd journal and bans an IP via
-  nftables after 5 failed attempts in 10 minutes. With key-only auth nobody
-  brute-forces in anyway, so here it mostly auto-drops persistent scanners and
-  keeps the auth log readable. Gotcha caught on the way: the package pulled in
-  firewalld and enabled it, which would have started on the next reboot and
-  blocked 80/443 — I disabled it so the site stays reachable.
-
-- nginx security headers. Five headers added via a drop-in: HSTS (force HTTPS
-  on future visits), X-Frame-Options DENY (no clickjacking via iframe),
-  X-Content-Type-Options nosniff (no MIME-sniffing), Referrer-Policy (don't
-  leak full URLs off-site), and a Content-Security-Policy. The CSP uses
-  'unsafe-inline' because the app is a single file with inline JS/CSS — a
-  strict policy would refuse to run it. For a static tool with no login or user
-  data that trade-off is fine; the honest note is it weakens CSP's main XSS
-  protection.
 
 - Config cleanup. Fixed a duplicated "server_name server_name" left over from
   the certbot edits — cosmetic, but wrong.
