@@ -1,49 +1,48 @@
 # Homelab
 
-Infrastructure I run at home and on a public VPS, documented one layer of the stack at a time.
+Infrastructure running across my physical hardware and public cloud instances, documented one layer of the stack at a time.
 
 ## What this is
 
-A working record of building platform infrastructure the way it actually gets built — one layer at a time, each running on real hardware with real services on top. The systems are live: a Dell R630 on Proxmox, an OPNsense firewall in front of the house network, a public internet-facing VPS, and services other people use. Nothing here is a lab exercise that gets deleted afterwards.
+A live working record of building platform infrastructure the way it actually gets deployed — incrementally, on real hardware, managing persistent network traffic. My core environment runs on a physical Dell R630 hypervisor using Proxmox VE, isolated behind a dedicated OPNsense firewall, and bridged to public, internet-facing cloud nodes hosting live playground domains like subnetlab.dev. 
 
-Each layer gets one write-up that grows as the work happens — what I built, what broke, how I found the cause, and what I'd do differently.
+Nothing here is a temporary sandbox setup designed to be blown away after an exercise. These systems are meant to stay up, evolve, and take live traffic.
+
+Instead of hiding mistakes, each layer contains an engineering log tracking exactly what was built, what broke under load, how the root cause was identified, and the architectural lessons learned along the way.
 
 ## Where things stand
 
-The write-ups in `writeups/` are the status: a file exists for a layer once it has work done, and the highest-numbered one is what I'm on now. That folder is the source of truth, so this README doesn't repeat it.
+The engineering logs inside `writeups/` represent the literal status of the architecture. A dedicated file is committed as soon as a technical layer is initialized. The highest-numbered file reflects the stack layer I am actively profiling and hardening right now. 
 
-## Network
+## Layers & Architecture Roadmap
 
-![Home network topology](diagrams/homelab.map.preview.png)
+The platform stack is constructed systematically from the bare metal up. The roadmap outlines my long-term engineering track:
 
-The current network map. An OPNsense VM on the Dell R630 routes and firewalls the home network. Addressing, topology detail and the reasoning live in the Layer 01 write-up; this diagram is replaced as the network changes.
+- [/] Layer 01: Networking & Edge Routing (OPNsense, Topology Routing)
+- [ ] Layer 02: Linux Operations & Compute Node Hardening (Arch/Debian Systems)
+- [ ] Layer 03: Container Runtimes & Orchestration Isolation
+- [ ] Layer 04: Local Kubernetes Deployments & Cluster Networking
+- [ ] Layer 05: Observability Platforms (Metrics Exporters, Logs, Telemetry)
+- [ ] Layer 06: Infrastructure as Code & Automation (Ansible, AWS Systems)
+- [ ] Layer 07: GPU Compute & Model Serving Pipelines
+- [ ] Layer 08: Storage Engineering & Redundant Backups
+- [ ] Layer 09: Continuous Integration & GitOps Delivery
+- [ ] Layer 10: Deep Platform Hardening & Access Control
 
-## Layers
+Once the base roadmap is fully deployed, the cycle loops back to Layer 01 to refactor, scale, and optimize infrastructure depth.
 
-The stack, in the order I build it — each opens a write-up in `writeups/` when I start it:
+## Repo Layout
 
-1. Networking
-2. Linux ops
-3. Containers
-4. Kubernetes
-5. Observability
-6. Automation & IaC (Ansible, Terraform, AWS)
-7. GPU & model serving
-8. Storage & backups
-9. CI/CD & GitOps
-10. Hardening
+```text
+homelab/
+├── README.md
+├── writeups/     # Engineering logs committed per structural layer
+├── diagrams/     # Live network topology maps and state diagrams
+└── network/      # Sanitized infrastructure configuration files
+```
 
-After layer 10, the list repeats from the top, one notch deeper.
+## Repository Guardrails
 
-## Repo layout
+*   **Sanitization First:** All committed configurations are strictly sanitized. Public IP ranges, cryptographic keys, personal access tokens, and unique physical MAC addresses are stripped out entirely. Private RFC1918 internal routing architecture is intentionally retained to preserve topological accuracy.
+*   **Decoupled Code:** Any internal programmatic utilities built alongside this infrastructure—such as custom metrics exporters, health checkers, traffic generators, or system CLIs—are maintained in distinct code repositories, not inside this configuration registry.
 
-    homelab/
-    ├── README.md
-    ├── writeups/     one file per layer, added as each layer opens
-    ├── diagrams/     the network map
-    └── network/      sanitised configs and notes for the current layer
-
-## Notes
-
-- Everything committed here is sanitised: no public addresses, keys, credentials or hardware identifiers. Private RFC1918 addressing is left in because the topology is meaningless without it.
-- Python tooling written alongside this work — exporters, health checkers, load generators, CLIs — lives in its own repositories, not here.
