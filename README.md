@@ -1,4 +1,4 @@
-# homelab
+# Homelab
 
 Infrastructure I run at home and on a public VPS, documented one layer of the stack at a time.
 
