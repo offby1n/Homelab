@@ -15,3 +15,16 @@ Each build gets a write-up in `writeups/`: what I built, what went wrong, how I 
 - [Hermes agent team](writeups/hermes-agent-team.md)
 
 ## Repo layout
+
+```
+homelab/
+├── README.md
+├── writeups/     # One write-up per build
+├── diagrams/     # Network topology and system diagrams
+└── network/      # Sanitized configuration files
+```
+
+## Guardrails
+
+- **Sanitized:** public IPs, keys, tokens and MAC addresses are removed before anything is committed. Private RFC1918 addressing is kept so the diagrams and configs stay accurate.
+- **Code lives elsewhere:** tools built alongside this lab (health checkers, exporters, CLIs) have their own repos. See my [profile](https://github.com/offby1n).
